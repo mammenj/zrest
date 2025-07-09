@@ -4,20 +4,26 @@ const Allocator = std.mem.Allocator;
 
 const PORT = 8080;
 
-// This example demonstrates using a custom Handler. It shows how to have
-// global state (here we show a counter, but it could be a more complex struct
-// including things such as a DB pool) and how to define not found and error
-// handlers.
+// This example demonstrates basic httpz usage, with focus on using the
+// httpz.Request and httpz.Response objects.
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    // We specify our "Handler" and, as the last parameter to init, pass an
-    // instance of it.
-    var handler = Handler{};
-    var server = try httpz.Server(*Handler).init(allocator, .{ .port = PORT }, &handler);
-
+    // We pass a "void" handler. This is the simplest, but limits what we can do
+    // The last parameter is an instance of our handler. Since we have
+    // a void handler, we pass a void value: i.e. {}.
+    var server = try httpz.Server(void).init(allocator, .{
+        .address = "0.0.0.0",
+        .port = PORT,
+        .request = .{
+            // httpz has a number of tweakable configuration settings (see readme)
+            // by default, it won't read form data. We need to configure a max
+            // field count (since one of our examples reads form data)
+            .max_form_count = 20,
+        },
+    }, {});
     defer server.deinit();
 
     // ensures a clean shutdown, finishing off any existing requests
@@ -26,11 +32,17 @@ pub fn main() !void {
 
     var router = try server.router(.{});
 
-    // Register routes.
-
+    // Register routes. The last parameter is a Route Config. For these basic
+    // examples, we aren't using it.
+    // Other support methods: post, put, delete, head, trace, options and all
     router.get("/", index, .{});
-    router.get("/hits", hits, .{});
-    router.get("/error", @"error", .{});
+    router.get("/hello", hello, .{});
+    router.get("/json/hello/:name", json, .{});
+    router.get("/writer/hello/:name", writer, .{});
+    router.get("/metrics", metrics, .{});
+    router.get("/form_data", formShow, .{});
+    router.post("/form_data", formPost, .{});
+    router.get("/explicit_write", explicitWrite, .{});
 
     std.debug.print("listening http://localhost:{d}/\n", .{PORT});
 
@@ -38,55 +50,77 @@ pub fn main() !void {
     try server.listen();
 }
 
-const Handler = struct {
-    _hits: usize = 0,
-
-    // If the handler defines a special "notFound" function, it'll be called
-    // when a request is made and no route matches.
-    pub fn notFound(_: *Handler, _: *httpz.Request, res: *httpz.Response) !void {
-        res.status = 404;
-        res.body = "NOPE!";
-    }
-
-    // If the handler defines the special "uncaughtError" function, it'll be
-    // called when an action returns an error.
-    // Note that this function takes an additional parameter (the error) and
-    // returns a `void` rather than a `!void`.
-    pub fn uncaughtError(_: *Handler, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
-        std.debug.print("uncaught http error at {s}: {}\n", .{ req.url.path, err });
-
-        // Alternative to res.content_type = .TYPE
-        // useful for dynamic content types, or content types not defined in
-        // httpz.ContentType
-        res.headers.add("content-type", "text/html; charset=utf-8");
-
-        res.status = 505;
-        res.body = "<!DOCTYPE html>(╯°□°)╯︵ ┻━┻";
-    }
-};
-
-fn index(_: *Handler, _: *httpz.Request, res: *httpz.Response) !void {
+fn index(_: *httpz.Request, res: *httpz.Response) !void {
     res.body =
         \\<!DOCTYPE html>
-        \\ <p>Except in very simple cases, you'll want to use a custom Handler.
-        \\ <p>A custom Handler is how you share app-specific data with your actions (like a DB pool)
-        \\    and define a custom not found and error function.
-        \\ <p>Other examples show more advanced things you can do with a custom Handler.
         \\ <ul>
-        \\ <li><a href="/hits">Shared global hit counter</a>
-        \\ <li><a href="/not_found">Custom not found handler</a>
-        \\ <li><a href="/error">Custom error  handler</a>
+        \\ <li><a href="/hello?name=Teg">Querystring + text output</a>
+        \\ <li><a href="/writer/hello/Ghanima">Path parameter + serialize json object</a>
+        \\ <li><a href="/json/hello/Duncan">Path parameter + json writer</a>
+        \\ <li><a href="/metrics">Internal metrics</a>
+        \\ <li><a href="/form_data">Form Data</a>
+        \\ <li><a href="/explicit_write">Explicit Write</a>
     ;
 }
 
-pub fn hits(h: *Handler, _: *httpz.Request, res: *httpz.Response) !void {
-    const count = @atomicRmw(usize, &h._hits, .Add, 1, .monotonic);
+fn hello(req: *httpz.Request, res: *httpz.Response) !void {
+    const query = try req.query();
+    const name = query.get("name") orelse "stranger";
 
-    // @atomicRmw returns the previous version so we need to +1 it
-    // to display the count includin this hit
-    return res.json(.{ .hits = count + 1 }, .{});
+    // Could also see res.writer(), see the writer endpoint for an example
+    res.body = try std.fmt.allocPrint(res.arena, "Hello {s}", .{name});
 }
 
-fn @"error"(_: *Handler, _: *httpz.Request, _: *httpz.Response) !void {
-    return error.ActionError;
+fn json(req: *httpz.Request, res: *httpz.Response) !void {
+    const name = req.param("name").?;
+
+    // the last parameter to res.json is an std.json.StringifyOptions
+    try res.json(.{ .hello = name }, .{});
+}
+
+fn writer(req: *httpz.Request, res: *httpz.Response) !void {
+    res.content_type = httpz.ContentType.JSON;
+
+    const name = req.param("name").?;
+    var ws = std.json.writeStream(res.writer(), .{ .whitespace = .indent_4 });
+    try ws.beginObject();
+    try ws.objectField("name");
+    try ws.write(name);
+    try ws.endObject();
+}
+
+fn metrics(_: *httpz.Request, res: *httpz.Response) !void {
+    // httpz exposes some prometheus-style metrics
+    return httpz.writeMetrics(res.writer());
+}
+
+fn formShow(_: *httpz.Request, res: *httpz.Response) !void {
+    res.body =
+        \\ <html>
+        \\ <form method=post>
+        \\    <p><input name=name value=goku></p>
+        \\    <p><input name=power value=9001></p>
+        \\    <p><input type=submit value=submit></p>
+        \\ </form>
+    ;
+}
+
+fn formPost(req: *httpz.Request, res: *httpz.Response) !void {
+    var it = (try req.formData()).iterator();
+
+    res.content_type = .TEXT;
+
+    const w = res.writer();
+    while (it.next()) |kv| {
+        try std.fmt.format(w, "{s}={s}\n", .{ kv.key, kv.value });
+    }
+}
+
+fn explicitWrite(_: *httpz.Request, res: *httpz.Response) !void {
+    res.body =
+        \\ There may be cases where your response is tied to data which
+        \\ required cleanup. If `res.arena` and `res.writer()` can't solve
+        \\ the issue, you can always call `res.write()` explicitly
+    ;
+    return res.write();
 }
