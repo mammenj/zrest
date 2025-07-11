@@ -1,5 +1,6 @@
 const std = @import("std");
 const httpz = @import("httpz");
+const email_validator = @import("email_validator.zig");
 const Allocator = std.mem.Allocator;
 
 const PORT = 8080;
@@ -43,7 +44,8 @@ pub fn main() !void {
     router.get("/form_data", formShow, .{});
     router.post("/form_data", formPost, .{});
     router.get("/explicit_write", explicitWrite, .{});
-
+    router.get("/validate_email", validatEmailformShow, .{});
+    router.post("/validate_email", validateEmail, .{});
     std.debug.print("listening http://localhost:{d}/\n", .{PORT});
 
     // Starts the server, this is blocking.
@@ -59,7 +61,8 @@ fn index(_: *httpz.Request, res: *httpz.Response) !void {
         \\ <li><a href="/json/hello/Duncan">Path parameter + json writer</a>
         \\ <li><a href="/metrics">Internal metrics</a>
         \\ <li><a href="/form_data">Form Data</a>
-        \\ <li><a href="/explicit_write">Explicit Write</a>
+        \\ <li><a href="/explicit_write">Explicit Write</a>  
+        \\ <li><a href="/validate_email">Validate Email</a>
     ;
 }
 
@@ -104,6 +107,15 @@ fn formShow(_: *httpz.Request, res: *httpz.Response) !void {
         \\ </form>
     ;
 }
+fn validatEmailformShow(_: *httpz.Request, res: *httpz.Response) !void {
+    res.body =
+        \\ <html>
+        \\ <form method=post>
+        \\    <p><input name=email value=email@some.net></p>
+        \\    <p><input type=submit value=submit></p>
+        \\ </form>
+    ;
+}
 
 fn formPost(req: *httpz.Request, res: *httpz.Response) !void {
     var it = (try req.formData()).iterator();
@@ -113,6 +125,53 @@ fn formPost(req: *httpz.Request, res: *httpz.Response) !void {
     const w = res.writer();
     while (it.next()) |kv| {
         try std.fmt.format(w, "{s}={s}\n", .{ kv.key, kv.value });
+    }
+}
+fn validateEmail(req: *httpz.Request, res: *httpz.Response) !void {
+    //
+    //
+    res.content_type = .TEXT;
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    res.content_type = .TEXT;
+
+    const form = try req.formData();
+    const email_param = form.get("email") orelse {
+        res.body = "Missing email parameter";
+        return;
+    };
+    const strict_rules = &[_]email_validator.ValidationRule{
+        email_validator.validateFormatBasic,
+            // email_validator.validateFormatRegex,
+            //        email_validator.validateDnsDomainExists,
+            // email_validator.validateMxRecords,
+    };
+    const validator = email_validator.EmailValidator.init(allocator, strict_rules);
+
+    const validation_result = validator.validate(email_param);
+    if (validation_result) {
+        res.body = "Email is valid ";
+        return;
+    } else |err| switch (err) {
+        email_validator.EmailValidationError.InvalidFormat => {
+            res.body = "Invalid email format";
+            return;
+        },
+        email_validator.EmailValidationError.NoMxRecords => {
+            res.body = "No MX records found for domain";
+            return;
+        },
+        email_validator.EmailValidationError.DnsLookupFailed => {
+            res.body = "DNS lookup failed";
+            return;
+        },
+        else => {
+            res.body = "Unexpected error: ";
+            return;
+        },
     }
 }
 

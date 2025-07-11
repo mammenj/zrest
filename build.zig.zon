@@ -36,7 +36,10 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
-        .httpz = .{ .url = "git+https://github.com/karlseguin/http.zig?ref=master#2924ead41db9e1986db3b4909a82185c576f6361", .hash = "httpz-0.0.0-PNVzrC7CBgDSMZNP7chgAczR3FyAz5Eum6Kb1_K9kmYR", },
+        .httpz = .{
+            .url = "git+https://github.com/karlseguin/http.zig?ref=master#2924ead41db9e1986db3b4909a82185c576f6361",
+            .hash = "httpz-0.0.0-PNVzrC7CBgDSMZNP7chgAczR3FyAz5Eum6Kb1_K9kmYR",
+        },
         // See `zig fetch --save <url>` for a command-line interface for adding dependencies.
         //.example = .{
         //    // When updating this field to a new URL, be sure to delete the corresponding
@@ -66,6 +69,14 @@
         //    // actually used.
         //    .lazy = false,
         //},
+        // .dns = .{
+        // .url = "https://github.com/milo-g/zigdns/archive/refs/tags/0.3.2.tar.gz",
+        // .hash = "dns-0.3.2-NW5iEBK4AQAVtYtKZBqXuwXiqYsHfcTSH6JU5kIEFClh",
+        // },
+        // .@"zig-reg" = .{
+        // .url = "git+https://github.com/tiehuis/zig-regex.git#88105ccfb6d679111b91d798d97cd4eb95617452",
+        // .hash = "regex-0.1.2-axC356XdAQCrReHJQmJLbCDBoYVvzj8y-wE1PXUjT4V6",
+        // },
     },
 
     // Specifies the set of files and directories that are included in this package.
