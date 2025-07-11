@@ -145,9 +145,9 @@ fn validateEmail(req: *httpz.Request, res: *httpz.Response) !void {
     };
     const strict_rules = &[_]email_validator.ValidationRule{
         email_validator.validateFormatBasic,
-            // email_validator.validateFormatRegex,
-            //        email_validator.validateDnsDomainExists,
-            // email_validator.validateMxRecords,
+        // email_validator.validateFormatRegex,
+        //        email_validator.validateDnsDomainExists,
+        email_validator.validateMxRecords,
     };
     const validator = email_validator.EmailValidator.init(allocator, strict_rules);
 

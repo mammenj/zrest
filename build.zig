@@ -75,16 +75,16 @@ pub fn build(b: *std.Build) void {
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
+    const dns = b.dependency("dns", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
+    exe.root_module.addImport("dns", dns.module("dns"));
     // const dns = b.dependency("zigdns", .{
     // .target = target,
     // .optimize = optimize,
     // });
-    const dns_pkg = b.addModule("zig_dns", .{
-        .root_source_file = b.path("src/zigdns.zig"),
-    });
-
-    exe.root_module.addImport("zig_dns", dns_pkg);
     // exe.root_module.addImport("zigdns", dns.module("zigdns"));
     // Add zig-regex dependency
     // const zig_regex_dep = b.dependency("@\"zig_reg\"", .{

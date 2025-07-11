@@ -1,6 +1,6 @@
 const std = @import("std");
 // const dns = @import("dns.zig"); // Assuming you have milo-g/zigdns installed
-const dns = @import("zig_dns");
+const dns = @import("dns");
 // --- 1. Define the Validation Rule Interface ---
 
 /// Common error set for all email validation errors.
